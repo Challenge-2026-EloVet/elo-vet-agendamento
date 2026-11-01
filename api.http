@@ -1,0 +1,137 @@
+### =====================================================================
+### ELO VET AGENDAMENTO - Demonstração (Oracle + pkg_elovet + MongoDB)
+### =====================================================================
+#
+# Execute as requisições NA ORDEM, no HTTP Client do IntelliJ.
+# O id do agendamento criado é salvo automaticamente em {{idAgendamento}}.
+#
+# Roteiro:
+#   1. Procedures e functions do pkg_elovet chamadas pela aplicação
+#   2. Agendamentos: inserção, consulta e alteração no Oracle
+#      (cada gravação dispara a trigger de auditoria)
+#   3. Auditoria: Oracle (JSON) -> MongoDB
+
+@baseUrl = http://localhost:8081
+
+
+### =====================================================================
+### 1. PROCEDURES E FUNCTIONS DO PKG_ELOVET
+### =====================================================================
+
+### 1.1 pkg_elovet.pr_agenda_json
+# Faz o JOIN de agendamento, pet, veterinário e clínica e monta o JSON
+# manualmente com fn_monta_json. A aplicação lê a saída do DBMS_OUTPUT.
+GET {{baseUrl}}/procedures/agenda-json
+
+
+### 1.2 pkg_elovet.pr_totaliza_idade_pet
+# Soma a idade dos pets por espécie e sexo, com subtotais e total geral,
+# usando quebra de controle (sem SUM e sem GROUP BY).
+GET {{baseUrl}}/procedures/totaliza-idade-pet
+
+
+### 1.3 pkg_elovet.fn_valida_cpf - CPF válido
+# Calcula os dígitos verificadores (módulo 11). Resultado esperado: VALIDO.
+GET {{baseUrl}}/procedures/valida-cpf/11144477735
+
+
+### 1.4 pkg_elovet.fn_valida_cpf - CPF inválido
+# Resultado esperado: INVALIDO.
+GET {{baseUrl}}/procedures/valida-cpf/11144477700
+
+
+### =====================================================================
+### 2. AGENDAMENTOS (ORACLE)
+### =====================================================================
+
+### 2.1 Listar os agendamentos da carga inicial
+GET {{baseUrl}}/agendamentos
+
+
+### 2.2 Criar um agendamento
+# Insere em elo_agendamento. O id vem da sequence do Oracle e a trigger
+# trg_auditoria_agendamento grava um INSERT em elo_auditoria.
+# Antes de gravar, a aplicação confere se o pet é do responsável e se o
+# veterinário atende na clínica (tabelas de vínculo do modelo).
+POST {{baseUrl}}/agendamentos
+Content-Type: application/json
+
+{
+  "idPet": 1,
+  "idResponsavel": 1,
+  "idVeterinario": 1,
+  "idClinica": 1,
+  "dataHora": "2026-12-10T14:30:00",
+  "observacao": "Retorno da consulta de rotina"
+}
+
+> {%
+    client.global.set("idAgendamento", response.body.idAgendamento);
+%}
+
+
+### 2.3 [Regra] Agendar pet de outro responsável
+# O pet 3 não pertence ao responsável 1. Resultado esperado: 422.
+POST {{baseUrl}}/agendamentos
+Content-Type: application/json
+
+{
+  "idPet": 3,
+  "idResponsavel": 1,
+  "idVeterinario": 1,
+  "idClinica": 1,
+  "dataHora": "2026-12-11T10:00:00"
+}
+
+
+### 2.4 Consultar o agendamento criado
+GET {{baseUrl}}/agendamentos/{{idAgendamento}}
+
+
+### 2.5 Remarcar o agendamento (alteração completa)
+# Gera um UPDATE em elo_auditoria com os valores anteriores e novos.
+PUT {{baseUrl}}/agendamentos/{{idAgendamento}}
+Content-Type: application/json
+
+{
+  "idPet": 1,
+  "idResponsavel": 1,
+  "idVeterinario": 2,
+  "idClinica": 1,
+  "dataHora": "2026-12-12T09:00:00",
+  "observacao": "Remarcado a pedido do tutor"
+}
+
+
+### 2.6 Confirmar o agendamento (alteração de status)
+PATCH {{baseUrl}}/agendamentos/{{idAgendamento}}/status
+Content-Type: application/json
+
+{
+  "status": "CONFIRMADO"
+}
+
+
+### 2.7 Filtrar agendamentos do responsável 1 com status CONFIRMADO
+GET {{baseUrl}}/agendamentos?idResponsavel=1&status=CONFIRMADO
+
+
+### =====================================================================
+### 3. AUDITORIA: ORACLE -> MONGODB
+### =====================================================================
+
+### 3.1 Sincronizar a auditoria agora
+# Executa na hora o mesmo processo que o agendador roda todo dia às 02:00:
+# lê em elo_auditoria os registros ainda não copiados e grava no MongoDB.
+POST {{baseUrl}}/auditorias/sincronizacao
+
+
+### 3.2 Sincronizar de novo
+# Nada novo para copiar: registrosSincronizados = 0 (não duplica documentos).
+POST {{baseUrl}}/auditorias/sincronizacao
+
+
+### 3.3 Histórico do agendamento criado, lido do MongoDB
+# Mostra o INSERT e os dois UPDATEs, com valoresAnteriores e valoresNovos
+# como subdocumentos JSON.
+GET {{baseUrl}}/auditorias?idAgendamento={{idAgendamento}}
