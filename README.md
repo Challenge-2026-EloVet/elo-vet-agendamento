@@ -26,7 +26,7 @@ Microsserviço em **Java (Spring Boot)** que gerencia os **agendamentos de consu
 
 ```mermaid
 flowchart LR
-    C[Cliente / api.http] -->|REST| S[elo-vet-agendamento<br/>Spring Boot]
+    C[Portal do Veterinário<br/>ou api.http] -->|REST| S[elo-vet-agendamento<br/>Spring Boot]
     S -->|JPA: INSERT / UPDATE / SELECT| A[(elo_agendamento)]
     S -->|CALL| P[pkg_elovet<br/>procedures e functions]
     A -->|trigger trg_auditoria_agendamento| P
@@ -113,6 +113,17 @@ Violações de regra retornam **422**; dados ausentes ou mal formatados, **400**
 | `GET` | `/procedures/totaliza-idade-pet` | `pkg_elovet.pr_totaliza_idade_pet` |
 | `GET` | `/procedures/valida-cpf/{cpf}` | `pkg_elovet.fn_valida_cpf` |
 
+### Catálogo (apoio ao formulário do portal)
+
+| Método | Rota | Descrição |
+| --- | --- | --- |
+| `GET` | `/catalogo/clinicas` | Clínicas |
+| `GET` | `/catalogo/clinicas/{idClinica}/veterinarios` | Veterinários que atendem na clínica (`elo_clinica_veterinario`) |
+| `GET` | `/catalogo/responsaveis` | Responsáveis (tutores) |
+| `GET` | `/catalogo/responsaveis/{idResponsavel}/pets` | Pets do responsável (`elo_pet_responsavel`) |
+
+As respostas de agendamento já trazem os nomes de pet, responsável, veterinário e clínica, prontos para exibição no portal.
+
 ### Auditoria (MongoDB)
 
 | Método | Rota | Descrição |
@@ -151,6 +162,8 @@ Execute os scripts do repositório de banco de dados, na ordem indicada no READM
 | `MONGODB_URI` | Não | `mongodb://root:secret@localhost:27017/elovet?authSource=admin` | Usada quando o MongoDB não vem do Docker Compose |
 | `AUDITORIA_SYNC_CRON` | Não | `0 0 2 * * *` | Horário da sincronização diária (cron do Spring) |
 | `PORT` | Não | `8081` | Porta HTTP |
+| `CORS_ALLOWED_ORIGINS` | Não | `http://localhost:5173,http://localhost:4173` | Origens do Portal do Veterinário liberadas no CORS |
+| `LOG_LEVEL` | Não | `INFO` | Nível de log da aplicação (`DEBUG` mostra também consultas e pendências da auditoria) |
 
 ### 3. Subir a aplicação
 
@@ -186,7 +199,8 @@ Os testes unitários cobrem a sincronização da auditoria: cópia incremental, 
 ```
 src/main/java/br/com/fiap/elovetagendamento
 ├── agendamento   # CRUD de elo_agendamento e regras de vínculo
+├── catalogo      # clínicas, veterinários, responsáveis e pets para o portal
 ├── procedure     # chamadas ao pkg_elovet (procedures, functions e DBMS_OUTPUT)
 ├── auditoria     # leitura de elo_auditoria, gravação no MongoDB e agendador diário
-└── shared        # tratamento global de erros
+└── shared        # CORS e tratamento global de erros
 ```

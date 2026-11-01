@@ -1,5 +1,7 @@
 package br.com.fiap.elovetagendamento.procedure.service;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.ConnectionCallback;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -20,6 +22,8 @@ import java.util.List;
 @Service
 public class PkgEloVetService {
 
+    private static final Logger log = LoggerFactory.getLogger(PkgEloVetService.class);
+
     private final JdbcTemplate jdbcTemplate;
 
     public PkgEloVetService(JdbcTemplate jdbcTemplate) {
@@ -28,29 +32,47 @@ public class PkgEloVetService {
 
     /** pkg_elovet.pr_agenda_json: agendamentos (JOIN de 4 tabelas) em formato JSON. */
     public List<String> agendaJson() {
-        return executarComSaida("BEGIN pkg_elovet.pr_agenda_json; END;");
+        return executarComSaida("pkg_elovet.pr_agenda_json");
     }
 
     /** pkg_elovet.pr_totaliza_idade_pet: soma de idades por espécie e sexo (quebra de controle). */
     public List<String> totalizaIdadePet() {
-        return executarComSaida("BEGIN pkg_elovet.pr_totaliza_idade_pet; END;");
+        return executarComSaida("pkg_elovet.pr_totaliza_idade_pet");
     }
 
     /** pkg_elovet.fn_valida_cpf: valida os dígitos verificadores do CPF. */
     public String validaCpf(String cpf) {
-        return jdbcTemplate.queryForObject("SELECT pkg_elovet.fn_valida_cpf(?) FROM dual", String.class, cpf);
+        log.info("Executando pkg_elovet.fn_valida_cpf para o CPF {}", mascararCpf(cpf));
+        String resultado = jdbcTemplate.queryForObject("SELECT pkg_elovet.fn_valida_cpf(?) FROM dual", String.class, cpf);
+        log.info("pkg_elovet.fn_valida_cpf retornou {} para o CPF {}", resultado, mascararCpf(cpf));
+        return resultado;
     }
 
-    private List<String> executarComSaida(String blocoPlSql) {
-        return jdbcTemplate.execute((ConnectionCallback<List<String>>) connection -> {
+    private List<String> executarComSaida(String procedure) {
+        log.info("Executando {} no Oracle", procedure);
+        long inicio = System.currentTimeMillis();
+
+        List<String> saida = jdbcTemplate.execute((ConnectionCallback<List<String>>) connection -> {
             executar(connection, "BEGIN DBMS_OUTPUT.ENABLE(NULL); END;");
             try {
-                executar(connection, blocoPlSql);
+                executar(connection, "BEGIN " + procedure + "; END;");
                 return lerSaida(connection);
             } finally {
                 executar(connection, "BEGIN DBMS_OUTPUT.DISABLE; END;");
             }
         });
+
+        log.info("{} concluída em {} ms: {} linha(s) lidas do DBMS_OUTPUT",
+                procedure, System.currentTimeMillis() - inicio, saida == null ? 0 : saida.size());
+        return saida;
+    }
+
+    /** Evita gravar o CPF completo em log: mantém apenas os dois últimos dígitos. */
+    private String mascararCpf(String cpf) {
+        if (cpf == null || cpf.length() < 2) {
+            return "***";
+        }
+        return "*********" + cpf.substring(cpf.length() - 2);
     }
 
     private void executar(Connection connection, String blocoPlSql) throws SQLException {

@@ -23,6 +23,7 @@ public class AuditoriaScheduler {
 
     @Scheduled(cron = "${elovet.auditoria.sync-cron}", zone = "America/Sao_Paulo")
     public void sincronizarDiariamente() {
+        log.info("Disparando sincronização diária da auditoria (Oracle -> MongoDB)");
         try {
             sincronizacaoService.sincronizar();
         } catch (RuntimeException exception) {

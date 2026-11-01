@@ -44,7 +44,10 @@ public class AuditoriaSincronizacaoService {
                 .map(AuditoriaDocument::getId)
                 .orElse(0L);
 
+        log.info("Iniciando sincronização da auditoria: buscando em elo_auditoria os registros com id > {}",
+                ultimoIdSincronizado);
         List<AuditoriaOracle> pendentes = oracleRepository.findByIdGreaterThanOrderByIdAsc(ultimoIdSincronizado);
+        log.debug("{} registro(s) de auditoria pendente(s) encontrados no Oracle", pendentes.size());
 
         LocalDateTime agora = LocalDateTime.now();
         List<AuditoriaDocument> documentos = pendentes.stream()

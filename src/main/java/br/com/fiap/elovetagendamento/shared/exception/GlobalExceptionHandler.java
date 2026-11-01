@@ -28,6 +28,7 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(AgendamentoRegraException.class)
     public ResponseEntity<ErrorResponse> handleRegra(AgendamentoRegraException exception) {
+        log.warn("Regra de negócio violada: {}", exception.getMessage());
         return build(HttpStatus.UNPROCESSABLE_ENTITY, exception.getMessage());
     }
 
@@ -36,12 +37,14 @@ public class GlobalExceptionHandler {
         List<String> detalhes = exception.getFieldErrors().stream()
                 .map(erro -> erro.getField() + ": " + erro.getDefaultMessage())
                 .toList();
+        log.warn("Requisição com dados inválidos: {}", detalhes);
         return ResponseEntity.badRequest()
                 .body(ErrorResponse.of(HttpStatus.BAD_REQUEST.value(), "Dados inválidos", detalhes));
     }
 
     @ExceptionHandler({HttpMessageNotReadableException.class, MethodArgumentTypeMismatchException.class})
     public ResponseEntity<ErrorResponse> handleFormato(Exception exception) {
+        log.warn("Requisição com formato inválido: {}", exception.getMessage());
         return build(HttpStatus.BAD_REQUEST,
                 "Requisição com formato inválido (verifique datas, números e valores de status)");
     }
