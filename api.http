@@ -117,21 +117,32 @@ GET {{baseUrl}}/agendamentos?idResponsavel=1&status=CONFIRMADO
 
 
 ### =====================================================================
-### 3. AUDITORIA: ORACLE -> MONGODB
+### 3. AUDITORIA: ORACLE (JSON) -> MONGODB
 ### =====================================================================
 
-### 3.1 Sincronizar a auditoria agora
+### 3.1 pkg_elovet.fn_exporta_valores_novos
+# A function monta no Oracle um array JSON com as auditorias do DIA ANTERIOR:
+# snapshot do agendamento (valores_novos) e os dados de pet, responsável,
+# veterinário e clínica. É exatamente este JSON que será gravado no MongoDB.
+# Obs.: o que foi criado/alterado hoje entra só na exportação de amanhã.
+GET {{baseUrl}}/procedures/exporta-valores-novos
+
+
+### 3.2 Exportar para o MongoDB agora
 # Executa na hora o mesmo processo que o agendador roda todo dia às 02:00:
-# lê em elo_auditoria os registros ainda não copiados e grava no MongoDB.
+# chama a function e grava cada objeto do JSON como um documento (_id = id_auditoria).
 POST {{baseUrl}}/auditorias/sincronizacao
 
 
-### 3.2 Sincronizar de novo
-# Nada novo para copiar: registrosSincronizados = 0 (não duplica documentos).
+### 3.3 Exportar de novo
+# Reexecutar para o mesmo dia substitui o lote (documentosSubstituidos)
+# em vez de duplicar documentos.
 POST {{baseUrl}}/auditorias/sincronizacao
 
 
-### 3.3 Histórico do agendamento criado, lido do MongoDB
-# Mostra o INSERT e os dois UPDATEs, com valoresAnteriores e valoresNovos
-# como subdocumentos JSON.
-GET {{baseUrl}}/auditorias?idAgendamento={{idAgendamento}}
+### 3.4 Documentos gravados no MongoDB
+GET {{baseUrl}}/auditorias
+
+
+### 3.5 Histórico de um agendamento no MongoDB
+GET {{baseUrl}}/auditorias?idAgendamento=9

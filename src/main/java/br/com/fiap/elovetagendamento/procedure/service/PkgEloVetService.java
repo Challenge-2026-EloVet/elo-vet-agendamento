@@ -10,6 +10,7 @@ import java.sql.CallableStatement;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.sql.Types;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -38,6 +39,24 @@ public class PkgEloVetService {
     /** pkg_elovet.pr_totaliza_idade_pet: soma de idades por espécie e sexo (quebra de controle). */
     public List<String> totalizaIdadePet() {
         return executarComSaida("pkg_elovet.pr_totaliza_idade_pet");
+    }
+
+    /**
+     * pkg_elovet.fn_exporta_valores_novos: array JSON com os valores novos auditados
+     * no dia anterior, montado pelo próprio Oracle.
+     */
+    public String exportaValoresNovos() {
+        log.info("Executando pkg_elovet.fn_exporta_valores_novos no Oracle");
+        long inicio = System.currentTimeMillis();
+        String json = jdbcTemplate.queryForObject("SELECT pkg_elovet.fn_exporta_valores_novos FROM dual", String.class);
+        log.info("pkg_elovet.fn_exporta_valores_novos concluída em {} ms ({} caracteres de JSON)",
+                System.currentTimeMillis() - inicio, json == null ? 0 : json.length());
+        return json;
+    }
+
+    /** Dia anterior segundo o relógio do Oracle: o mesmo TRUNC(SYSDATE) - 1 usado pela exportação. */
+    public LocalDate dataReferenciaExportacao() {
+        return jdbcTemplate.queryForObject("SELECT TRUNC(SYSDATE) - 1 FROM dual", LocalDate.class);
     }
 
     /** pkg_elovet.fn_valida_cpf: valida os dígitos verificadores do CPF. */

@@ -2,6 +2,7 @@ package br.com.fiap.elovetagendamento.shared.exception;
 
 import br.com.fiap.elovetagendamento.agendamento.exception.AgendamentoNotFoundException;
 import br.com.fiap.elovetagendamento.agendamento.exception.AgendamentoRegraException;
+import br.com.fiap.elovetagendamento.auditoria.service.ExportacaoInvalidaException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataAccessException;
@@ -30,6 +31,12 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ErrorResponse> handleRegra(AgendamentoRegraException exception) {
         log.warn("Regra de negócio violada: {}", exception.getMessage());
         return build(HttpStatus.UNPROCESSABLE_ENTITY, exception.getMessage());
+    }
+
+    @ExceptionHandler(ExportacaoInvalidaException.class)
+    public ResponseEntity<ErrorResponse> handleExportacao(ExportacaoInvalidaException exception) {
+        log.error("Falha na exportação da auditoria: {}", exception.getMessage(), exception);
+        return build(HttpStatus.BAD_GATEWAY, exception.getMessage());
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)

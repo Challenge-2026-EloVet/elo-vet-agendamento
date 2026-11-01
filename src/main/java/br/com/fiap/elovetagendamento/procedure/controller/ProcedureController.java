@@ -35,6 +35,13 @@ public class ProcedureController {
         return ResponseEntity.ok().contentType(tipo).body(saida);
     }
 
+    /** Executa pkg_elovet.fn_exporta_valores_novos e devolve o JSON gerado pelo Oracle. */
+    @GetMapping(value = "/exporta-valores-novos", produces = MediaType.APPLICATION_JSON_VALUE)
+    public String exportaValoresNovos() {
+        String json = pkgEloVetService.exportaValoresNovos();
+        return json != null ? json : "null";
+    }
+
     /** Executa pkg_elovet.pr_totaliza_idade_pet e devolve o relatório gerado pela procedure. */
     @GetMapping(value = "/totaliza-idade-pet", produces = MediaType.TEXT_PLAIN_VALUE)
     public String totalizaIdadePet() {

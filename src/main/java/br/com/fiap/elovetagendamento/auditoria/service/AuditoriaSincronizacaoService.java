@@ -1,71 +1,113 @@
 package br.com.fiap.elovetagendamento.auditoria.service;
 
-import br.com.fiap.elovetagendamento.auditoria.document.AuditoriaDocument;
 import br.com.fiap.elovetagendamento.auditoria.dto.SincronizacaoResponse;
-import br.com.fiap.elovetagendamento.auditoria.mapper.AuditoriaMapper;
-import br.com.fiap.elovetagendamento.auditoria.model.AuditoriaOracle;
-import br.com.fiap.elovetagendamento.auditoria.repository.AuditoriaMongoRepository;
-import br.com.fiap.elovetagendamento.auditoria.repository.AuditoriaOracleRepository;
+import br.com.fiap.elovetagendamento.procedure.service.PkgEloVetService;
+import org.bson.BsonInvalidOperationException;
+import org.bson.Document;
+import org.bson.json.JsonParseException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.mongodb.core.MongoTemplate;
+import org.springframework.data.mongodb.core.query.Criteria;
+import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.util.Date;
 import java.util.List;
 
 /**
- * Copia os registros de elo_auditoria (Oracle) para a collection
- * auditoria_agendamento (MongoDB).
- * A cópia é incremental: busca no Oracle apenas os ids maiores que o último já
- * presente no MongoDB. Como o _id do documento é o próprio id_auditoria,
- * executar a sincronização mais de uma vez não duplica registros.
+ * Exporta a auditoria do Oracle para o MongoDB.
+ * O JSON é gerado pelo próprio banco relacional, na function pkg_elovet.fn_exporta_valores_novos,
+ * que devolve um array com as auditorias do dia anterior: o snapshot do agendamento e os dados
+ * do pet, responsável, veterinário e clínica. Cada objeto do array é gravado como veio, como um
+ * documento da collection auditoria_agendamento, acrescido de:
+ * - _id: o id_auditoria do Oracle;
+ * - dataReferencia: o dia exportado (AAAA-MM-DD);
+ * - exportadoEm: o momento da gravação.
+ * Executar a exportação mais de uma vez para o mesmo dia substitui os documentos daquele dia.
  */
 @Service
 public class AuditoriaSincronizacaoService {
 
+    public static final String COLLECTION = "auditoria_agendamento";
+
     private static final Logger log = LoggerFactory.getLogger(AuditoriaSincronizacaoService.class);
 
-    private final AuditoriaOracleRepository oracleRepository;
-    private final AuditoriaMongoRepository mongoRepository;
-    private final AuditoriaMapper mapper;
+    private final PkgEloVetService pkgEloVetService;
+    private final MongoTemplate mongoTemplate;
 
-    public AuditoriaSincronizacaoService(AuditoriaOracleRepository oracleRepository,
-                                         AuditoriaMongoRepository mongoRepository,
-                                         AuditoriaMapper mapper) {
-        this.oracleRepository = oracleRepository;
-        this.mongoRepository = mongoRepository;
-        this.mapper = mapper;
+    public AuditoriaSincronizacaoService(PkgEloVetService pkgEloVetService, MongoTemplate mongoTemplate) {
+        this.pkgEloVetService = pkgEloVetService;
+        this.mongoTemplate = mongoTemplate;
     }
 
-    @Transactional(readOnly = true)
     public SincronizacaoResponse sincronizar() {
-        long ultimoIdSincronizado = mongoRepository.findTopByOrderByIdDesc()
-                .map(AuditoriaDocument::getId)
-                .orElse(0L);
+        // A data vem do próprio Oracle para coincidir com o TRUNC(SYSDATE) - 1 usado pela function
+        LocalDate dataReferencia = pkgEloVetService.dataReferenciaExportacao();
+        log.info("Iniciando exportação da auditoria de {} (pkg_elovet.fn_exporta_valores_novos -> MongoDB)",
+                dataReferencia);
 
-        log.info("Iniciando sincronização da auditoria: buscando em elo_auditoria os registros com id > {}",
-                ultimoIdSincronizado);
-        List<AuditoriaOracle> pendentes = oracleRepository.findByIdGreaterThanOrderByIdAsc(ultimoIdSincronizado);
-        log.debug("{} registro(s) de auditoria pendente(s) encontrados no Oracle", pendentes.size());
-
+        String json = pkgEloVetService.exportaValoresNovos();
         LocalDateTime agora = LocalDateTime.now();
-        List<AuditoriaDocument> documentos = pendentes.stream()
-                .map(auditoria -> mapper.toDocument(auditoria, agora))
-                .toList();
+        List<Document> documentos = converter(json, dataReferencia, agora);
 
-        mongoRepository.saveAll(documentos);
+        long substituidos = mongoTemplate
+                .remove(Query.query(Criteria.where("dataReferencia").is(dataReferencia.toString())), COLLECTION)
+                .getDeletedCount();
+        if (!documentos.isEmpty()) {
+            mongoTemplate.insert(documentos, COLLECTION);
+        }
 
-        Long ultimoId = documentos.isEmpty() ? ultimoIdSincronizado : documentos.getLast().getId();
-        log.info("Sincronização de auditoria concluída: {} registro(s) copiados para o MongoDB (último id_auditoria = {})",
-                documentos.size(), ultimoId);
-
-        return new SincronizacaoResponse(documentos.size(), ultimoId, agora);
+        log.info("Exportação de {} concluída: {} documento(s) gravados no MongoDB ({} substituídos de execução anterior)",
+                dataReferencia, documentos.size(), substituidos);
+        return new SincronizacaoResponse(dataReferencia, documentos.size(), substituidos, agora);
     }
 
-    public List<AuditoriaDocument> listar(Long idAgendamento) {
-        return idAgendamento != null
-                ? mongoRepository.findByIdRegistroAfetadoOrderByIdAsc(idAgendamento)
-                : mongoRepository.findAllByOrderByIdAsc();
+    public List<Document> listar(Long idAgendamento, LocalDate dataReferencia) {
+        Query query = new Query();
+        if (idAgendamento != null) {
+            query.addCriteria(Criteria.where("id_agendamento").is(idAgendamento));
+        }
+        if (dataReferencia != null) {
+            query.addCriteria(Criteria.where("dataReferencia").is(dataReferencia.toString()));
+        }
+        query.with(Sort.by(Sort.Order.desc("dataReferencia"), Sort.Order.asc("_id")));
+        return mongoTemplate.find(query, Document.class, COLLECTION);
+    }
+
+    private List<Document> converter(String json, LocalDate dataReferencia, LocalDateTime agora) {
+        if (json == null || json.isBlank()) {
+            // A function devolve NULL quando ocorre erro inesperado no Oracle
+            throw new ExportacaoInvalidaException(
+                    "pkg_elovet.fn_exporta_valores_novos não retornou dados (verifique a saída do DBMS_OUTPUT no Oracle)");
+        }
+        List<Document> itens;
+        try {
+            // O parser do BSON só aceita objetos na raiz, por isso o array é envolvido em um objeto
+            itens = Document.parse("{\"itens\": " + json + "}").getList("itens", Document.class);
+        } catch (JsonParseException | BsonInvalidOperationException | ClassCastException exception) {
+            throw new ExportacaoInvalidaException(
+                    "O retorno de pkg_elovet.fn_exporta_valores_novos não é um array JSON válido", exception);
+        }
+
+        Date exportadoEm = Date.from(agora.atZone(ZoneId.systemDefault()).toInstant());
+        return itens.stream()
+                .map(item -> {
+                    Object idAuditoria = item.get("id_auditoria");
+                    if (idAuditoria == null) {
+                        throw new ExportacaoInvalidaException(
+                                "Objeto exportado sem id_auditoria: " + item.toJson());
+                    }
+                    Document documento = new Document("_id", idAuditoria);
+                    documento.putAll(item);
+                    documento.append("dataReferencia", dataReferencia.toString())
+                            .append("exportadoEm", exportadoEm);
+                    return documento;
+                })
+                .toList();
     }
 }

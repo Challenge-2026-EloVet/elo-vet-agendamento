@@ -23,12 +23,12 @@ public class AuditoriaScheduler {
 
     @Scheduled(cron = "${elovet.auditoria.sync-cron}", zone = "America/Sao_Paulo")
     public void sincronizarDiariamente() {
-        log.info("Disparando sincronização diária da auditoria (Oracle -> MongoDB)");
+        log.info("Disparando exportação diária da auditoria (Oracle -> MongoDB)");
         try {
             sincronizacaoService.sincronizar();
         } catch (RuntimeException exception) {
             // Uma falha não pode derrubar o agendador; a próxima execução retoma de onde parou
-            log.error("Falha na sincronização diária da auditoria", exception);
+            log.error("Falha na exportação diária da auditoria", exception);
         }
     }
 }
