@@ -137,6 +137,44 @@ Violações de regra retornam **422**; dados ausentes ou mal formatados, **400**
 
 As respostas de agendamento já trazem os nomes de pet, responsável, veterinário e clínica, prontos para exibição no portal.
 
+### Clínicas (app mobile do tutor)
+
+| Método | Rota | Descrição |
+| --- | --- | --- |
+| `GET` | `/clinicas` | Lista as clínicas. Filtros opcionais: `latitude` + `longitude` (localização do tutor) e `especialidade` |
+| `GET` | `/clinicas/{id}` | Consulta uma clínica; aceita `latitude` + `longitude` para calcular a distância |
+
+A resposta segue a interface `Clinic` do app mobile (campos em inglês):
+
+```json
+{
+  "id": "1",
+  "name": "Elo Vet Pinheiros",
+  "distance": "2,9 km",
+  "distanceKm": 2.92,
+  "specialties": ["Clinica Geral", "Dermatologia"],
+  "rating": 4.8,
+  "address": "Rua dos Pinheiros, 500 - Pinheiros, Sao Paulo - SP",
+  "phone": "(11) 3045-1122",
+  "accessibility": ["Banheiro adaptado", "Elevador", "Rampa de acesso"],
+  "coordinates": { "latitude": -23.56687, "longitude": -46.68393 }
+}
+```
+
+| Campo | Origem no Oracle |
+| --- | --- |
+| `rating` | `elo_clinica.avaliacao` (0 a 5) |
+| `address`, `coordinates` | `elo_endereco` (`latitude` e `longitude`) |
+| `specialties` | Especialidades dos veterinários que atendem na clínica (`elo_clinica_veterinario` × `elo_veterinario_especialidade`) |
+| `accessibility` | `elo_clinica_acessibilidade` × `elo_acessibilidade` |
+| `distance`, `distanceKm` | Calculados pela fórmula de Haversine a partir da localização do tutor. Sem localização, vêm `null` |
+
+Regras:
+
+- Com localização, a lista vem ordenada da clínica mais próxima para a mais distante (clínicas sem coordenadas ficam no fim); sem localização, por nome.
+- O filtro `especialidade` não diferencia acentos nem maiúsculas (`clínica geral` encontra `Clinica Geral`).
+- Informar só a latitude ou só a longitude, ou coordenadas fora do intervalo válido, retorna **400**; clínica inexistente, **404**.
+
 ### Auditoria (MongoDB)
 
 | Método | Rota | Descrição |
@@ -203,7 +241,7 @@ $env:MONGODB_URI="mongodb+srv://usuario:senha@cluster.mongodb.net/elovet"
 .\gradlew.bat test
 ```
 
-Os testes unitários cobrem a exportação da auditoria: gravação de cada objeto do JSON como documento (preservando os objetos aninhados), substituição do lote do mesmo dia, dia sem auditoria e falha sem apagar dados quando a function retorna `NULL` ou um JSON inválido.
+Os testes unitários cobrem a exportação da auditoria: gravação de cada objeto do JSON como documento (preservando os objetos aninhados), substituição do lote do mesmo dia, dia sem auditoria e falha sem apagar dados quando a function retorna `NULL` ou um JSON inválido. Também cobrem as clínicas do app mobile: cálculo e formatação da distância, ordenação por proximidade, filtro de especialidade, formatação de telefone e endereço e validação da localização.
 
 ---
 
@@ -213,6 +251,7 @@ Os testes unitários cobrem a exportação da auditoria: gravação de cada obje
 src/main/java/br/com/fiap/elovetagendamento
 ├── agendamento   # CRUD de elo_agendamento e regras de vínculo
 ├── catalogo      # clínicas, veterinários, responsáveis e pets para o portal
+├── clinica       # clínicas no formato do app mobile (distância, especialidades e acessibilidade)
 ├── procedure     # chamadas ao pkg_elovet (procedures, functions e DBMS_OUTPUT)
 ├── auditoria     # exportação via fn_exporta_valores_novos, gravação no MongoDB e agendador diário
 └── shared        # CORS e tratamento global de erros

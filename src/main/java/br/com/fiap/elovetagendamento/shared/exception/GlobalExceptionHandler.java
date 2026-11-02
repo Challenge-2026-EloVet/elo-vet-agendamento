@@ -3,6 +3,8 @@ package br.com.fiap.elovetagendamento.shared.exception;
 import br.com.fiap.elovetagendamento.agendamento.exception.AgendamentoNotFoundException;
 import br.com.fiap.elovetagendamento.agendamento.exception.AgendamentoRegraException;
 import br.com.fiap.elovetagendamento.auditoria.service.ExportacaoInvalidaException;
+import br.com.fiap.elovetagendamento.clinica.exception.ClinicaNotFoundException;
+import br.com.fiap.elovetagendamento.clinica.exception.LocalizacaoInvalidaException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataAccessException;
@@ -25,6 +27,18 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(AgendamentoNotFoundException.class)
     public ResponseEntity<ErrorResponse> handleNotFound(AgendamentoNotFoundException exception) {
         return build(HttpStatus.NOT_FOUND, exception.getMessage());
+    }
+
+    @ExceptionHandler(ClinicaNotFoundException.class)
+    public ResponseEntity<ErrorResponse> handleClinicaNaoEncontrada(ClinicaNotFoundException exception) {
+        log.warn(exception.getMessage());
+        return build(HttpStatus.NOT_FOUND, exception.getMessage());
+    }
+
+    @ExceptionHandler(LocalizacaoInvalidaException.class)
+    public ResponseEntity<ErrorResponse> handleLocalizacao(LocalizacaoInvalidaException exception) {
+        log.warn("Localização inválida na busca de clínicas: {}", exception.getMessage());
+        return build(HttpStatus.BAD_REQUEST, exception.getMessage());
     }
 
     @ExceptionHandler(AgendamentoRegraException.class)

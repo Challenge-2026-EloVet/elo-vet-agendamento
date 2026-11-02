@@ -10,6 +10,7 @@
 #   2. Agendamentos: inserção, consulta e alteração no Oracle
 #      (cada gravação dispara a trigger de auditoria)
 #   3. Auditoria: Oracle (JSON) -> MongoDB
+#   4. Clínicas no formato do app mobile do tutor
 
 @baseUrl = http://localhost:8081
 
@@ -146,3 +147,29 @@ GET {{baseUrl}}/auditorias
 
 ### 3.5 Histórico de um agendamento no MongoDB
 GET {{baseUrl}}/auditorias?idAgendamento=9
+
+
+### =====================================================================
+### 4. CLÍNICAS (APP MOBILE DO TUTOR)
+### =====================================================================
+
+### 4.1 Listar as clínicas (sem localização: ordem alfabética, sem distância)
+GET {{baseUrl}}/clinicas
+
+
+### 4.2 Clínicas mais próximas do tutor (Av. Paulista)
+# Calcula distance/distanceKm e ordena da mais próxima para a mais distante.
+GET {{baseUrl}}/clinicas?latitude=-23.561414&longitude=-46.655881
+
+
+### 4.3 Clínicas próximas que atendem uma especialidade
+GET {{baseUrl}}/clinicas?latitude=-23.561414&longitude=-46.655881&especialidade=dermatologia
+
+
+### 4.4 Detalhe de uma clínica com a distância até o tutor
+GET {{baseUrl}}/clinicas/1?latitude=-23.561414&longitude=-46.655881
+
+
+### 4.5 [Erro] Latitude sem longitude
+# Resultado esperado: 400 Bad Request.
+GET {{baseUrl}}/clinicas?latitude=-23.561414
